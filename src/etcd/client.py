@@ -6,6 +6,7 @@
 
 
 """
+from httplib import IncompleteRead
 import logging
 import socket
 import urllib3
@@ -571,6 +572,9 @@ class Client(object):
                     # fail when we try to reconnect.
                     _log.debug("Read timed out, (expected if no events)",
                                exc_info=True)
+                    read_failed = True
+                except IncompleteRead:
+                    _log.exception("Incomplete, read, reconnecting")
                     read_failed = True
                 except Exception:
                     _log.exception("Read failed with unexpected exception")
