@@ -7,7 +7,9 @@
 
 """
 import logging
+import socket
 import urllib3
+import urllib3.util
 import json
 import ssl
 
@@ -381,7 +383,7 @@ class Client(object):
                     params[k] = v
 
         timeout = kwdargs.get('timeout', None)
-        preload = not kwdargs["stream"]
+        preload = not kwdargs.get("stream")
 
         response = self.api_execute(
             self.key_endpoint + key, self._MGET, params=params,
@@ -553,22 +555,26 @@ class Client(object):
                 key,
                 wait=True,
                 waitIndex=local_index,
-                timeout=urllib3.Timeout(connect=connect_timeout,
-                                        read=read_timeout),
+                timeout=urllib3.util.Timeout(connect=connect_timeout,
+                                             read=read_timeout),
                 stream=True,
                 recursive=recursive)
             read_failed = False
             while not read_failed:
                 try:
                     event = r.readline()
-                except urllib3.exceptions.ReadTimeoutError:
-                    # Expected if there are no events.
-                    _log.debug("Read timeoud out, (expected if no events)")
+                except (urllib3.exceptions.MaxRetryError,
+                        urllib3.exceptions.ReadTimeoutError,
+                        socket.timeout):  # seen in gevent.
+                    # Expected if there are no events.  Note: if the server
+                    # really has gone away then the _raw_read call above with
+                    # fail when we try to reconnect.
+                    _log.debug("Read timed out, (expected if no events)",
+                               exc_info=True)
                     read_failed = True
-                except urllib3.exceptions.ProtocolError:
-                    _log.warn("Protocol error (likely server disconnect)",
-                              exc_info=True)
-                    read_failed = True
+                except Exception:
+                    _log.exception("Read failed with unexpected exception")
+                    raise
                 else:
                     result = self._result_from_json(event, r.getheaders())
                     if local_index is not None:

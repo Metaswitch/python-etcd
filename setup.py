@@ -9,7 +9,9 @@ NEWS = open(os.path.join(here, 'NEWS.txt')).read()
 version = '0.3.2'
 
 install_requires = [
-    'urllib3>=1.7',
+    # <1.8 because 1.8 changed exception hierarchy to include, at least,
+    # ProtocolError.
+    'urllib3>=1.7,<1.8',
     'pyOpenSSL>=0.14',
 ]
 
