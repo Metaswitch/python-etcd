@@ -44,8 +44,7 @@ class EtcdResult(object):
             if self._prev_node.dir and not self.dir:
                 self.dir = True
 
-    def parse_headers(self, response):
-        headers = response.getheaders()
+    def parse_headers(self, headers):
         self.etcd_index = int(headers.get('x-etcd-index', 1))
         self.raft_index = int(headers.get('x-raft-index', 1))
 
@@ -168,17 +167,20 @@ class EtcdError(object):
     }
 
     @classmethod
-    def handle(cls, errorCode=None, message=None, cause=None, **kwdargs):
+    def handle(cls, **kwdargs):
         """ Decodes the error and throws the appropriate error message"""
+        error_code = kwdargs.get("errorCode")
+        message = kwdargs.get("message")
+        cause = kwdargs.get("cause"),
         try:
             msg = '{} : {}'.format(message, cause)
-            payload={'errorCode': errorCode, 'message': message, 'cause': cause}
+            payload={'errorCode': error_code, 'message': message, 'cause': cause}
             if len(kwdargs) > 0:
                 for key in kwdargs:
                     payload[key]=kwdargs[key]
-            exc = cls.error_exceptions[errorCode]
+            exc = cls.error_exceptions.get(error_code, EtcdException)
         except:
-            msg = "Unable to decode server response"
+            msg = "Unable to decode server response %r" % kwdargs
             exc = EtcdException
         if exc in [EtcdException, EtcdKeyNotFound, EtcdNotFile, EtcdNotDir, EtcdAlreadyExist, EtcdEventIndexCleared]:
             raise exc(msg, payload)

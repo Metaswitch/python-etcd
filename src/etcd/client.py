@@ -6,11 +6,14 @@
 
 
 """
+import logging
 import urllib3
 import json
 import ssl
 
 import etcd
+
+_log = logging.getLogger(__name__)
 
 
 class Client(object):
@@ -24,7 +27,8 @@ class Client(object):
     _MPOST = 'POST'
     _MDELETE = 'DELETE'
     _comparison_conditions = set(('prevValue', 'prevIndex', 'prevExist'))
-    _read_options = set(('recursive', 'wait', 'waitIndex', 'sorted', 'consistent'))
+    _read_options = set(('recursive', 'wait', 'waitIndex', 'sorted',
+                         'consistent', 'stream'))
     _del_conditions = set(('prevValue', 'prevIndex'))
     def __init__(
             self,
@@ -297,8 +301,6 @@ class Client(object):
 
         return self.write(obj.key, obj.value, **kwdargs)
 
-
-
     def read(self, key, **kwdargs):
         """
         Returns the value of the key 'key'.
@@ -329,6 +331,42 @@ class Client(object):
 
         >>> print client.get('/key').value
         'value'
+        """
+        _log.debug("Read for %s: %s", key, kwdargs)
+        response = self._raw_read(key, **kwdargs)
+        return self._result_from_response(response)
+
+    def _raw_read(self, key, **kwdargs):
+        """
+        Returns the server response for the key 'key'.
+
+        Args:
+            key (str):  Key.
+
+            Recognized kwd args
+
+            recursive (bool): If you should fetch recursively a dir
+
+            wait (bool): If we should wait and return next time the key is changed
+
+            waitIndex (int): The index to fetch results from.
+
+            stream (bool): True to ask the server for a streaming response.
+
+            sorted (bool): Sort the output keys (alphanumerically)
+
+            timeout (int):  max seconds to wait for a read.
+
+        Returns:
+            urllib3 Response for the given key.
+
+        Raises:
+            KeyValue:  If the key doesn't exists.
+
+            urllib3.exceptions.TimeoutError: If timeout is reached.
+
+        >>> print client.get('/key').value
+        'value'
 
         """
         key = self._sanitize_key(key)
@@ -338,14 +376,16 @@ class Client(object):
             if k in self._read_options:
                 if type(v) == bool:
                     params[k] = v and "true" or "false"
-                else:
+                elif v is not None:
                     params[k] = v
 
         timeout = kwdargs.get('timeout', None)
+        preload = not kwdargs["stream"]
 
         response = self.api_execute(
-            self.key_endpoint + key, self._MGET, params=params, timeout=timeout)
-        return self._result_from_response(response)
+            self.key_endpoint + key, self._MGET, params=params,
+            timeout=timeout, preload=preload)
+        return response
 
     def delete(self, key, recursive=None, dir=None, **kwdargs):
         """
@@ -485,7 +525,8 @@ class Client(object):
             return self.read(key, wait=True, timeout=timeout,
                              recursive=recursive)
 
-    def eternal_watch(self, key, index=None):
+    def eternal_watch(self, key, index=None, recursive=False,
+                      connect_timeout=10, read_timeout=90):
         """
         Generator that will yield changes from a key.
         Note that this method will block forever until an event is generated.
@@ -505,11 +546,34 @@ class Client(object):
 
         """
         local_index = index
+
         while True:
-            response = self.watch(key, index=local_index, timeout=0)
-            if local_index is not None:
-                local_index += 1
-            yield response
+            r = self._raw_read(
+                key,
+                wait=True,
+                waitIndex=local_index,
+                timeout=urllib3.Timeout(connect=connect_timeout,
+                                        read=read_timeout),
+                stream=True,
+                recursive=recursive)
+            read_failed = False
+            while not read_failed:
+                try:
+                    event = r.readline()
+                except urllib3.exceptions.ReadTimeoutError:
+                    # Expected if there are no events.
+                    _log.debug("Read timeoud out, (expected if no events)")
+                    read_failed = True
+                except urllib3.exceptions.ProtocolError:
+                    _log.warn("Protocol error (likely server disconnect)",
+                              exc_info=True)
+                    read_failed = True
+                else:
+                    result = self._result_from_json(event, r.getheaders())
+                    if local_index is not None:
+                        local_index = max(local_index,
+                                          result.modifiedIndex) + 1
+                    yield result
 
     def get_lock(self, *args, **kwargs):
         return etcd.Lock(self, *args, **kwargs)
@@ -519,13 +583,23 @@ class Client(object):
         return etcd.LeaderElection(self)
 
     def _result_from_response(self, response):
-        """ Creates an EtcdResult from json dictionary """
+        """ Creates an EtcdResult from urllib3 response."""
         try:
-            res = json.loads(response.data.decode('utf-8'))
-            r = etcd.EtcdResult(**res)
+            json_str = response.data.decode('utf-8')
+            etcd_result = self._result_from_json(json_str,
+                                                 response.getheaders())
             if response.status == 201:
-                r.newKey = True
-            r.parse_headers(response)
+                etcd_result.newKey = True
+            return etcd_result
+        except Exception as e:
+            raise etcd.EtcdException(
+                'Unable to decode server response: %s' % e)
+
+    def _result_from_json(self, json_str, headers):
+        try:
+            res = json.loads(json_str)
+            r = etcd.EtcdResult(**res)
+            r.parse_headers(headers)
             return r
         except Exception as e:
             raise etcd.EtcdException(
@@ -538,9 +612,12 @@ class Client(object):
         except IndexError:
             raise etcd.EtcdException('No more machines in the cluster')
 
-    def api_execute(self, path, method, params=None, timeout=None):
+    def api_execute(self, path, method, params=None, timeout=None,
+                    preload=True):
         """ Executes the query. """
 
+        _log.debug("Executing %s for %s; params: %s; timeout: %s; preload: %s",
+                   method, path, params, timeout, preload)
         some_request_failed = False
         response = False
 
@@ -563,7 +640,8 @@ class Client(object):
                         url,
                         timeout=timeout,
                         fields=params,
-                        redirect=self.allow_redirect)
+                        redirect=self.allow_redirect,
+                        preload_content=preload)
 
                 elif (method == self._MPUT) or (method == self._MPOST):
                     response = self.http.request_encode_body(
@@ -572,9 +650,10 @@ class Client(object):
                         fields=params,
                         timeout=timeout,
                         encode_multipart=False,
-                        redirect=self.allow_redirect)
+                        redirect=self.allow_redirect,
+                        preload_content=preload)
                 else:
-                    raise etcd.EtcdException(
+                    raise etcd.EtcdClientSideError(
                         'HTTP method {} not supported'.format(method))
 
             except urllib3.exceptions.MaxRetryError:
@@ -598,7 +677,7 @@ class Client(object):
             try:
                 r = json.loads(resp)
             except ValueError:
-                r = None
+                raise etcd.EtcdException(message="Bad response: %r" % resp)
             if r:
                 etcd.EtcdError.handle(**r)
             else:
