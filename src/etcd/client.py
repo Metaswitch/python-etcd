@@ -72,6 +72,7 @@ class Client(object):
 
         """
         self._machines_cache = []
+        self._cluster_uuid = None
 
         self._protocol = protocol
 
@@ -655,6 +656,19 @@ class Client(object):
                 else:
                     raise etcd.EtcdClientSideError(
                         'HTTP method {} not supported'.format(method))
+
+                cluster_id = response.getheader("x-etcd-cluster-id")
+                if (("wait" in params) and
+                        ("waitIndex" in params) and
+                        self._cluster_uuid and
+                        (cluster_id != self._cluster_uuid)):
+                    # Bail out of the wait, the etcd_index might have come
+                    # from the old cluster.
+                    raise etcd.EtcdClusterIdChanged(
+                        'The UUID of the cluster changed from {} to '
+                        '{}.'.format(self._cluster_uuid, cluster_id))
+                if not self._cluster_uuid:
+                    self._cluster_uuid = cluster_id
 
             except urllib3.exceptions.MaxRetryError:
                 self._base_uri = self._next_server()
