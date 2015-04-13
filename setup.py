@@ -18,9 +18,11 @@ test_requires = [
     'nose',
 ]
 
-setup(name='python-etcd',
+setup(name='calico-python-etcd',
     version=version,
-    description="A python client for etcd",
+    description="A python client for etcd.  Fork of Jose Plana's "
+                "python-etcd module with support for streaming and "
+                "additional error handling.",
     long_description=README + '\n\n' + NEWS,
     classifiers=[
         "Topic :: System :: Distributed Computing",
@@ -29,9 +31,9 @@ setup(name='python-etcd',
         "Topic :: Database :: Front-Ends",
     ],
     keywords='etcd raft distributed log api client',
-    author='Jose Plana',
-    author_email='jplana@gmail.com',
-    url='http://github.com/jplana/python-etcd',
+    author='Jose Plana, Updates by Project Calico',
+    author_email='shaun@projectcalico.org',
+    url='http://github.com/Metaswitch/python-etcd',
     license='MIT',
     packages=find_packages('src'),
     package_dir = {'': 'src'},
