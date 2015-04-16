@@ -1,5 +1,5 @@
-python-etcd (0.3.3-1) unstable; urgency=low
+python-etcd (0.3.3-1calico0.15) trusty; urgency=medium
 
-  * source package automatically created by stdeb 0.6.0+git
+  * Avoid polling on invalid etcd_index read from an old cluster
 
  -- Matt Dupre <matt@projectcalico.org>  Thu, 16 Apr 2015 17:34:30 +0100
