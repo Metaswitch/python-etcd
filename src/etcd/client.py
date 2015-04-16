@@ -581,6 +581,11 @@ class Client(object):
                     raise etcd.EtcdException(
                         'HTTP method {} not supported'.format(method))
 
+            except urllib3.exceptions.MaxRetryError:
+                self._base_uri = self._next_server()
+                some_request_failed = True
+
+            else:
                 # If requested, check the cluster ID hasn't changed under us.
                 # We need preload_content == False above to ensure we can read
                 # the headers here before waiting for the content of a watch
@@ -597,10 +602,6 @@ class Client(object):
 
                 # Force synchronous load of data before we return.
                 _ = response.data
-
-            except urllib3.exceptions.MaxRetryError:
-                self._base_uri = self._next_server()
-                some_request_failed = True
 
         if some_request_failed:
             self._machines_cache = self.machines
