@@ -1,0 +1,148 @@
+Index: python-etcd/setup.py
+===================================================================
+--- python-etcd.orig/setup.py	2015-04-16 18:20:39.254191165 +0100
++++ python-etcd/setup.py	2015-04-16 18:21:27.288911688 +0100
+@@ -6,10 +6,12 @@
+ NEWS = open(os.path.join(here, 'NEWS.txt')).read()
+ 
+ 
+-version = '0.3.3'
++version = '0.3.3-calico-1'
+ 
+ install_requires = [
+-    'urllib3>=1.7',
++    # <1.8 because 1.8 changed exception hierarchy to include, at least,
++    # ProtocolError.
++    'urllib3>=1.7,<1.8',
+     'pyOpenSSL>=0.14',
+ ]
+ 
+Index: python-etcd/src/etcd/__init__.py
+===================================================================
+--- python-etcd.orig/src/etcd/__init__.py	2015-04-16 18:20:39.254191165 +0100
++++ python-etcd/src/etcd/__init__.py	2015-04-16 18:21:27.288911688 +0100
+@@ -110,6 +110,15 @@
+         self.payload=payload
+ 
+ 
++class EtcdClusterIdChanged(EtcdException):
++    """
++    The etcd cluster ID changed.  This may indicate the cluster was replaced
++    with a backup.  Raised to prevent waiting on an etcd_index that was only
++    valid on the old cluster.
++    """
++    pass
++
++
+ class EtcdKeyError(EtcdException):
+     """
+     Etcd Generic KeyError Exception
+Index: python-etcd/src/etcd/client.py
+===================================================================
+--- python-etcd.orig/src/etcd/client.py	2015-04-16 18:20:39.254191165 +0100
++++ python-etcd/src/etcd/client.py	2015-04-16 18:21:27.288911688 +0100
+@@ -7,6 +7,7 @@
+ 
+ """
+ import urllib3
++import urllib3.util
+ import json
+ import ssl
+ 
+@@ -68,6 +69,7 @@
+ 
+         """
+         self._machines_cache = []
++        self._cluster_uuid = None
+ 
+         self._protocol = protocol
+ 
+@@ -297,9 +299,7 @@
+ 
+         return self.write(obj.key, obj.value, **kwdargs)
+ 
+-
+-
+-    def read(self, key, **kwdargs):
++    def read(self, key, check_cluster_uuid=False, **kwdargs):
+         """
+         Returns the value of the key 'key'.
+ 
+@@ -344,7 +344,8 @@
+         timeout = kwdargs.get('timeout', None)
+ 
+         response = self.api_execute(
+-            self.key_endpoint + key, self._MGET, params=params, timeout=timeout)
++            self.key_endpoint + key, self._MGET, params=params,
++            timeout=timeout, check_cluster_uuid=check_cluster_uuid)
+         return self._result_from_response(response)
+ 
+     def delete(self, key, recursive=None, dir=None, **kwdargs):
+@@ -480,10 +481,10 @@
+         """
+         if index:
+             return self.read(key, wait=True, waitIndex=index, timeout=timeout,
+-                             recursive=recursive)
++                             recursive=recursive, check_cluster_uuid=True)
+         else:
+             return self.read(key, wait=True, timeout=timeout,
+-                             recursive=recursive)
++                             recursive=recursive, check_cluster_uuid=True)
+ 
+     def eternal_watch(self, key, index=None):
+         """
+@@ -538,7 +539,8 @@
+         except IndexError:
+             raise etcd.EtcdException('No more machines in the cluster')
+ 
+-    def api_execute(self, path, method, params=None, timeout=None):
++    def api_execute(self, path, method, params=None, timeout=None,
++                    check_cluster_uuid=False):
+         """ Executes the query. """
+ 
+         some_request_failed = False
+@@ -563,7 +565,8 @@
+                         url,
+                         timeout=timeout,
+                         fields=params,
+-                        redirect=self.allow_redirect)
++                        redirect=self.allow_redirect,
++                        preload_content=False)
+ 
+                 elif (method == self._MPUT) or (method == self._MPOST):
+                     response = self.http.request_encode_body(
+@@ -572,7 +575,8 @@
+                         fields=params,
+                         timeout=timeout,
+                         encode_multipart=False,
+-                        redirect=self.allow_redirect)
++                        redirect=self.allow_redirect,
++                        preload_content=False)
+                 else:
+                     raise etcd.EtcdException(
+                         'HTTP method {} not supported'.format(method))
+@@ -581,6 +585,24 @@
+                 self._base_uri = self._next_server()
+                 some_request_failed = True
+ 
++            else:
++                # If requested, check the cluster ID hasn't changed under us.
++                # We need preload_content == False above to ensure we can read
++                # the headers here before waiting for the content of a watch
++                # below.
++                cluster_id = response.getheader("x-etcd-cluster-id")
++                if (check_cluster_uuid and
++                        self._cluster_uuid and
++                        (cluster_id != self._cluster_uuid)):
++                    raise etcd.EtcdClusterIdChanged(
++                        'The UUID of the cluster changed from {} to '
++                        '{}.'.format(self._cluster_uuid, cluster_id))
++                elif not self._cluster_uuid:
++                    self._cluster_uuid = cluster_id
++
++                # Force synchronous load of data before we return.
++                _ = response.data
++
+         if some_request_failed:
+             self._machines_cache = self.machines
+             self._machines_cache.remove(self._base_uri)
