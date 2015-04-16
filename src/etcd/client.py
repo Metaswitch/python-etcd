@@ -7,7 +7,6 @@
 
 """
 import urllib3
-import urllib3.util
 import json
 import ssl
 
@@ -69,7 +68,6 @@ class Client(object):
 
         """
         self._machines_cache = []
-        self._cluster_uuid = None
 
         self._protocol = protocol
 
@@ -299,7 +297,9 @@ class Client(object):
 
         return self.write(obj.key, obj.value, **kwdargs)
 
-    def read(self, key, check_cluster_uuid=False, **kwdargs):
+
+
+    def read(self, key, **kwdargs):
         """
         Returns the value of the key 'key'.
 
@@ -344,8 +344,7 @@ class Client(object):
         timeout = kwdargs.get('timeout', None)
 
         response = self.api_execute(
-            self.key_endpoint + key, self._MGET, params=params,
-            timeout=timeout, check_cluster_uuid=check_cluster_uuid)
+            self.key_endpoint + key, self._MGET, params=params, timeout=timeout)
         return self._result_from_response(response)
 
     def delete(self, key, recursive=None, dir=None, **kwdargs):
@@ -481,10 +480,10 @@ class Client(object):
         """
         if index:
             return self.read(key, wait=True, waitIndex=index, timeout=timeout,
-                             recursive=recursive, check_cluster_uuid=True)
+                             recursive=recursive)
         else:
             return self.read(key, wait=True, timeout=timeout,
-                             recursive=recursive, check_cluster_uuid=True)
+                             recursive=recursive)
 
     def eternal_watch(self, key, index=None):
         """
@@ -539,8 +538,7 @@ class Client(object):
         except IndexError:
             raise etcd.EtcdException('No more machines in the cluster')
 
-    def api_execute(self, path, method, params=None, timeout=None,
-                    check_cluster_uuid=False):
+    def api_execute(self, path, method, params=None, timeout=None):
         """ Executes the query. """
 
         some_request_failed = False
@@ -565,8 +563,7 @@ class Client(object):
                         url,
                         timeout=timeout,
                         fields=params,
-                        redirect=self.allow_redirect,
-                        preload_content=False)
+                        redirect=self.allow_redirect)
 
                 elif (method == self._MPUT) or (method == self._MPOST):
                     response = self.http.request_encode_body(
@@ -575,8 +572,7 @@ class Client(object):
                         fields=params,
                         timeout=timeout,
                         encode_multipart=False,
-                        redirect=self.allow_redirect,
-                        preload_content=False)
+                        redirect=self.allow_redirect)
                 else:
                     raise etcd.EtcdException(
                         'HTTP method {} not supported'.format(method))
@@ -584,24 +580,6 @@ class Client(object):
             except urllib3.exceptions.MaxRetryError:
                 self._base_uri = self._next_server()
                 some_request_failed = True
-
-            else:
-                # If requested, check the cluster ID hasn't changed under us.
-                # We need preload_content == False above to ensure we can read
-                # the headers here before waiting for the content of a watch
-                # below.
-                cluster_id = response.getheader("x-etcd-cluster-id")
-                if (check_cluster_uuid and
-                        self._cluster_uuid and
-                        (cluster_id != self._cluster_uuid)):
-                    raise etcd.EtcdClusterIdChanged(
-                        'The UUID of the cluster changed from {} to '
-                        '{}.'.format(self._cluster_uuid, cluster_id))
-                elif not self._cluster_uuid:
-                    self._cluster_uuid = cluster_id
-
-                # Force synchronous load of data before we return.
-                _ = response.data
 
         if some_request_failed:
             self._machines_cache = self.machines
