@@ -6,7 +6,7 @@ README = open(os.path.join(here, 'README.rst')).read()
 NEWS = open(os.path.join(here, 'NEWS.txt')).read()
 
 
-version = '0.3.3-calico-1'
+version = '0.3.3-calico-2'
 
 install_requires = [
     # <1.8 because 1.8 changed exception hierarchy to include, at least,
