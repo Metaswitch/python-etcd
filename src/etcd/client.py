@@ -38,6 +38,7 @@ class Client(object):
             cert=None,
             ca_cert=None,
             allow_reconnect=False,
+            expected_cluster_id=None,
     ):
         """
         Initialize the client.
@@ -69,7 +70,7 @@ class Client(object):
 
         """
         self._machines_cache = []
-        self._cluster_uuid = None
+        self.expected_cluster_id = expected_cluster_id
 
         self._protocol = protocol
 
@@ -592,13 +593,13 @@ class Client(object):
                 # below.
                 cluster_id = response.getheader("x-etcd-cluster-id")
                 if (check_cluster_uuid and
-                        self._cluster_uuid and
-                        (cluster_id != self._cluster_uuid)):
+                        self.expected_cluster_id and
+                        (cluster_id != self.expected_cluster_id)):
                     raise etcd.EtcdClusterIdChanged(
                         'The UUID of the cluster changed from {} to '
-                        '{}.'.format(self._cluster_uuid, cluster_id))
-                elif not self._cluster_uuid:
-                    self._cluster_uuid = cluster_id
+                        '{}.'.format(self.expected_cluster_id, cluster_id))
+                elif not self.expected_cluster_id:
+                    self.expected_cluster_id = cluster_id
 
                 # Force synchronous load of data before we return.
                 _ = response.data
