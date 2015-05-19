@@ -68,6 +68,12 @@ class Client(object):
                                     etcd server in the cluster in the case the
                                     default one does not respond.
 
+            expected_cluster_id (str): If a string, recorded as the expected
+                                       UUID of the cluster (rather than
+                                       learning it from the first request),
+                                       reads will raise EtcdClusterIdChanged
+                                       if they receive a response with a
+                                       different cluster ID.
         """
         self._machines_cache = []
         self.expected_cluster_id = expected_cluster_id
@@ -87,6 +93,7 @@ class Client(object):
 
         self._base_uri = uri(self._protocol, self._host, self._port)
 
+        self.expected_cluster_id = expected_cluster_id
         self.version_prefix = version_prefix
 
         self._read_timeout = read_timeout
@@ -300,7 +307,7 @@ class Client(object):
 
         return self.write(obj.key, obj.value, **kwdargs)
 
-    def read(self, key, check_cluster_uuid=False, **kwdargs):
+    def read(self, key, **kwdargs):
         """
         Returns the value of the key 'key'.
 
@@ -346,7 +353,7 @@ class Client(object):
 
         response = self.api_execute(
             self.key_endpoint + key, self._MGET, params=params,
-            timeout=timeout, check_cluster_uuid=check_cluster_uuid)
+            timeout=timeout)
         return self._result_from_response(response)
 
     def delete(self, key, recursive=None, dir=None, **kwdargs):
@@ -587,22 +594,21 @@ class Client(object):
                 some_request_failed = True
 
             else:
-                # If requested, check the cluster ID hasn't changed under us.
-                # We need preload_content == False above to ensure we can read
-                # the headers here before waiting for the content of a watch
-                # below.
+                # Check the cluster ID hasn't changed under us.  We use
+                # preload_content=False above so we can read the headers
+                # before we wait for the content of a long poll.
                 cluster_id = response.getheader("x-etcd-cluster-id")
-                if (check_cluster_uuid and
-                        self.expected_cluster_id and
-                        (cluster_id != self.expected_cluster_id)):
+                id_changed = (self.expected_cluster_id and
+                              cluster_id != self.expected_cluster_id)
+                # Update the ID so we only raise the exception once.
+                self.expected_cluster_id = cluster_id
+                if id_changed:
+                    # Defensive: clear the pool so that we connect afresh next
+                    # time.
+                    self.http.clear()
                     raise etcd.EtcdClusterIdChanged(
                         'The UUID of the cluster changed from {} to '
                         '{}.'.format(self.expected_cluster_id, cluster_id))
-                elif not self.expected_cluster_id:
-                    self.expected_cluster_id = cluster_id
-
-                # Force synchronous load of data before we return.
-                _ = response.data
 
         if some_request_failed:
             self._machines_cache = self.machines
