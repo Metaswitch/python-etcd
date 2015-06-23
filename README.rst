@@ -185,7 +185,8 @@ Release HOWTO
 
 To make a release
 
-    1) Update release date/version in NEWS.txt and setup.py
+    1) Update release date/version in NEWS.txt, setup.py and
+       src/etcd/__init__.py
     2) Run 'python setup.py sdist'
     3) Test the generated source distribution in dist/
     4) Upload to PyPI: 'python setup.py sdist register upload'

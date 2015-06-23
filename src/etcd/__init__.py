@@ -3,6 +3,7 @@ from .client import Client
 from .lock import Lock
 from .election import LeaderElection
 
+__version__ = '0.3.3-calico-3'
 
 class EtcdResult(object):
     _node_props = {
