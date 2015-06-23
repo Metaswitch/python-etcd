@@ -1,9 +1,11 @@
 import collections
+import pkg_resources
+
 from .client import Client
 from .lock import Lock
 from .election import LeaderElection
 
-__version__ = '0.3.3-calico-3'
+__version__ = pkg_resources.get_distribution('python-etcd')
 
 class EtcdResult(object):
     _node_props = {
