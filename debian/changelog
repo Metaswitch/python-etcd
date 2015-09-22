@@ -1,0 +1,38 @@
+python-etcd (0.4.1+calico.1-1) trusty; urgency=medium
+
+  * Rebase onto 0.4.1.
+  * Wrap low-level exceptions in EtcdConnectionFailed.
+  * Various bug fixes.
+  * Now depends on etcd 2.0+.
+
+ -- Shaun Crampton <shaun@projectcalico.org>  Tue, 22 Sep 2015 10:27:28 +0100
+
+python-etcd (0.3.3-1calico0.26) trusty; urgency=medium
+
+  * Fix unhelpful logging message on cluster ID change.
+
+ -- Cory Benfield <cory@projectcalico.org>  Mon, 29 Jun 2015 09:33:31 +0100
+
+python-etcd (0.3.3-1calico0.22.1) trusty; urgency=medium
+
+  * Reduce the scope of exception handlers.
+
+ -- Cory Benfield <cory@projectcalico.org>  Mon, 8 May 2015 09:39:11 +0100
+
+python-etcd (0.3.3-1calico0.17) trusty; urgency=medium
+
+  * Only throw a cluster change exception once.
+
+ -- Cory Benfield <cory@projectcalico.org>  Tue, 19 May 2015 08:43:15 +0100
+
+python-etcd (0.3.3-1calico0.16) trusty; urgency=medium
+
+  * Allow cluster ID to be specified
+
+ -- Cory Benfield <cory@projectcalico.org>  Tue, 21 Apr 2015 11:17:30 +0100
+
+python-etcd (0.3.3-1calico0.15) trusty; urgency=medium
+
+  * Avoid polling on invalid etcd_index read from an old cluster
+
+ -- Matt Dupre <matt@projectcalico.org>  Thu, 16 Apr 2015 17:34:30 +0100
