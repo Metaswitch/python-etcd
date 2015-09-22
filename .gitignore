@@ -14,3 +14,9 @@ dist
 docs
 etcd
 .coverage
+
+debian/files
+debian/*.log
+debian/*.debhelper
+debian/*.substvars
+debian/python-etcd

@@ -1,0 +1,32 @@
+Source: python-etcd
+Maintainer: Shaun Crampton <shaun@projectcalico.org>
+Section: python
+Priority: optional
+Build-Depends: python-setuptools (>= 0.6b3), python-all (>= 2.6.6-3), debhelper (>= 7)
+Standards-Version: 3.9.1
+
+Package: python-etcd
+Architecture: all
+Depends: ${misc:Depends}, ${python:Depends}
+Description: A python client for etcd
+ python-etcd documentation
+ =========================
+ .
+ A python client for Etcd https://github.com/coreos/etcd
+ .
+ Official documentation: http://python-etcd.readthedocs.org/
+ .
+ .. image:: https://travis-ci.org/jplana/python-etcd.png?branch=master
+    :target: https://travis-ci.org/jplana/python-etcd
+ .
+ Installation
+ ------------
+ .
+ Pre-requirements
+ ~~~~~~~~~~~~~~~~
+ .
+ Install etcd (2.0.1 or later). This version of python-etcd will only work correctly with the etcd version 2.0.x or later. If you are running an older version of etcd, please use python-etcd 0.3.3 or earlier.
+ .
+ This client is known to work with python 2.7 and with python 3.3 or above. It is not tested or expected to work in more outdated versions of python.
+ .
+
