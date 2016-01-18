@@ -1,3 +1,10 @@
+python-etcd (0.4.3+calico.1-1) trusty; urgency=medium
+
+  * Rebase onto 0.4.3.
+  * Only non-upstream fix is etcd 2.0.9 CAS bug workaround.
+
+ -- Matt Dupre <matt@projectcalico.org>  Mon, 18 Jan 2015 15:46:20 +0100
+
 python-etcd (0.4.2+calico.1-1) trusty; urgency=medium
 
   * Rebase onto 0.4.2.

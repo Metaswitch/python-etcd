@@ -2,7 +2,7 @@ PYTHON=`which python`
 DESTDIR=/
 BUILDIR=$(CURDIR)/debian/python-etcd
 PROJECT=python-etcd
-VERSION=0.4.2+calico.1
+VERSION=0.4.3+calico.1
 
 all:
 	@echo "make source - Create source package"
