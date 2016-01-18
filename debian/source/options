@@ -1,1 +1,1 @@
-extend-diff-ignore="(\.egg-info$|\.idea.*|eggs.+|etcd/.*|dist/.*|docs/.*|bin/.*|.installed.cfg|.travis.yml|Makefile|bootstrap.py|build_etcd.sh|docs-source/.*|buildout.cfg)$"
+extend-diff-ignore="(\.egg-info$|\.idea.*|eggs.+|etcd/.*|dist/.*|docs/.*|bin/.*|.installed.cfg|.travis.yml|Makefile|AUTHORS|Dockerfile|build-rpms.sh|setup.cfg|bootstrap.py|build_etcd.sh|docs-source/.*|buildout.cfg)$"
