@@ -1,5 +1,12 @@
 import unittest
 import etcd
+import dns.name
+import dns.rdtypes.IN.SRV
+import dns.resolver
+try:
+    import mock
+except ImportError:
+    from unittest import mock
 
 
 class TestClient(unittest.TestCase):
@@ -37,6 +44,16 @@ class TestClient(unittest.TestCase):
         """ default allow_redirect is True"""
         client = etcd.Client()
         assert client.allow_redirect
+
+    def test_default_username(self):
+        """ default username is None"""
+        client = etcd.Client()
+        assert client.username is None
+
+    def test_default_password(self):
+        """ default username is None"""
+        client = etcd.Client()
+        assert client.password is None
 
     def test_set_host(self):
         """ can change host """
@@ -85,6 +102,29 @@ class TestClient(unittest.TestCase):
         client = etcd.Client(use_proxies = True)
         assert client._use_proxies
 
+    def test_set_username_only(self):
+        client = etcd.Client(username='username')
+        assert client.username is None
+
+    def test_set_password_only(self):
+        client = etcd.Client(password='password')
+        assert client.password is None
+
+    def test_set_username_password(self):
+        client = etcd.Client(username='username', password='password')
+        assert client.username == 'username'
+        assert client.password == 'password'
+
+    def test_get_headers_with_auth(self):
+        client = etcd.Client(username='username', password='password')
+        assert client._get_headers() == {
+            'authorization': 'Basic dXNlcm5hbWU6cGFzc3dvcmQ='
+        }
+
+    def test_get_headers_without_auth(self):
+        client = etcd.Client()
+        assert client._get_headers() == {}
+
     def test_allow_reconnect(self):
         """ Fails if allow_reconnect is false and a list of hosts is given"""
         with self.assertRaises(etcd.EtcdException):
@@ -97,3 +137,25 @@ class TestClient(unittest.TestCase):
             allow_reconnect=True,
             use_proxies=True,
         )
+
+    def test_discover(self):
+        """Tests discovery."""
+        answers = []
+        for i in range(1,3):
+            r = mock.create_autospec(dns.rdtypes.IN.SRV.SRV)
+            r.port = 2379
+            try:
+                method = dns.name.from_unicode
+            except AttributeError:
+                method = dns.name.from_text
+            r.target = method(u'etcd{}.example.com'.format(i))
+            answers.append(r)
+        dns.resolver.query = mock.create_autospec(dns.resolver.query, return_value=answers)
+        self.machines = etcd.Client.machines
+        etcd.Client.machines = mock.create_autospec(etcd.Client.machines, return_value=[u'https://etcd2.example.com:2379'])
+        c = etcd.Client(srv_domain="example.com", allow_reconnect=True, protocol="https")
+        etcd.Client.machines = self.machines
+        self.assertEquals(c.host, u'etcd1.example.com')
+        self.assertEquals(c.port, 2379)
+        self.assertEquals(c._machines_cache,
+                          [u'https://etcd2.example.com:2379'])

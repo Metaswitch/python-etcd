@@ -12,7 +12,6 @@ tmp
 build
 dist
 docs
-etcd
 .coverage
 
 debian/files

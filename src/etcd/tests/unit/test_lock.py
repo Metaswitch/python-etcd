@@ -1,5 +1,8 @@
 import etcd
-import mock
+try:
+    import mock
+except ImportError:
+    from unittest import mock
 from etcd.tests.unit import TestClientApiBase
 
 
@@ -37,8 +40,8 @@ class TestClientLock(TestClientApiBase):
         Acquiring a precedingly inexistent lock works.
         """
         l = etcd.Lock(self.client, 'test_lock')
-        l._find_lock = mock.create_autospec(l._find_lock, return_value=False)
-        l._acquired = mock.create_autospec(l._acquired, return_value=True)
+        l._find_lock = mock.MagicMock(spec=l._find_lock, return_value=False)
+        l._acquired = mock.MagicMock(spec=l._acquired, return_value=True)
         # Mock the write
         d = {
             u'action': u'set',
@@ -87,13 +90,12 @@ class TestClientLock(TestClientApiBase):
         """
         self.locker._sequence = '4'
         retval = ('/_locks/test_lock/4', None)
-        self.locker._get_locker = mock.create_autospec(
-            self.locker._get_locker, return_value=retval)
+        self.locker._get_locker = mock.MagicMock(
+            spec=self.locker._get_locker, return_value=retval)
         self.assertTrue(self.locker._acquired())
         self.assertTrue(self.locker.is_taken)
         retval = ('/_locks/test_lock/1', '/_locks/test_lock/4')
-        self.locker._get_locker = mock.create_autospec(
-            self.locker._get_locker, return_value=retval)
+        self.locker._get_locker = mock.MagicMock(return_value=retval)
         self.assertFalse(self.locker._acquired(blocking=False))
         self.assertFalse(self.locker.is_taken)
         d = {
@@ -109,6 +111,27 @@ class TestClientLock(TestClientApiBase):
 
         def side_effect():
             return returns.pop()
+
+        self.locker._get_locker = mock.MagicMock(
+            spec=self.locker._get_locker, side_effect=side_effect)
+        self.assertTrue(self.locker._acquired())
+
+    def test_acquired_no_timeout(self):
+        self.locker._sequence = 4
+        returns = [('/_locks/test_lock/4', None), ('/_locks/test_lock/1', '/_locks/test_lock/4')]
+
+        def side_effect():
+            return returns.pop()
+
+        d = {
+            u'action': u'get',
+            u'node': {
+                u'modifiedIndex': 190,
+                u'key': u'/_locks/test_lock/4',
+                u'value': self.locker.uuid
+            }
+        }
+        self._mock_api(200, d)
 
         self.locker._get_locker = mock.create_autospec(
             self.locker._get_locker, side_effect=side_effect)
@@ -146,7 +169,6 @@ class TestClientLock(TestClientApiBase):
         self.recursive_read()
         self.assertTrue(self.locker._find_lock())
         self.assertEquals(self.locker._sequence, '34')
-
 
     def test_get_locker(self):
         self.recursive_read()

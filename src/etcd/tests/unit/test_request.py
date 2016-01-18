@@ -1,3 +1,4 @@
+import socket
 import urllib3
 
 import etcd
@@ -68,7 +69,8 @@ class TestClientApiInternals(TestClientApiBase):
         self._mock_api(200, d)
         self.client.write('/newdir', None, dir=True)
         self.assertEquals(self.client.api_execute.call_args,
-            (('/v2/keys/newdir', 'PUT'), dict(params={'dir': 'true'})))
+                          (('/v2/keys/newdir', 'PUT'),
+                           dict(params={'dir': 'true'})))
 
 
 class TestClientApiInterface(TestClientApiBase):
@@ -89,7 +91,9 @@ class TestClientApiInterface(TestClientApiBase):
     @mock.patch('etcd.Client.machines', new_callable=mock.PropertyMock)
     def test_use_proxies(self, mocker):
         """Do not overwrite the machines cache when using proxies"""
-        mocker.return_value = ['https://10.0.0.2:4001', 'https://10.0.0.3:4001', 'https://10.0.0.4:4001']
+        mocker.return_value = ['https://10.0.0.2:4001',
+                               'https://10.0.0.3:4001',
+                               'https://10.0.0.4:4001']
         c = etcd.Client(
             host=(('localhost', 4001), ('localproxy', 4001)),
             protocol='https',
@@ -99,17 +103,16 @@ class TestClientApiInterface(TestClientApiBase):
 
         self.assertEquals(c._machines_cache, ['https://localproxy:4001'])
         self.assertEquals(c._base_uri, 'https://localhost:4001')
-        self.assertNotIn(c.base_uri,c._machines_cache)
+        self.assertNotIn(c.base_uri, c._machines_cache)
 
         c = etcd.Client(
-            host=(('localhost', 4001), ('10.0.0.2',4001)),
+            host=(('localhost', 4001), ('10.0.0.2', 4001)),
             protocol='https',
             allow_reconnect=True,
             use_proxies=False
         )
         self.assertIn('https://10.0.0.3:4001', c._machines_cache)
-        self.assertNotIn(c.base_uri,c._machines_cache)
-
+        self.assertNotIn(c.base_uri, c._machines_cache)
 
     def test_members(self):
         """ Can request machines """
@@ -159,7 +162,7 @@ class TestClientApiInterface(TestClientApiBase):
         """ Can request the leader """
         members = {"ce2a822cea30bfca": {"id": "ce2a822cea30bfca", "name": "default"}}
         mocker.return_value = members
-        self._mock_api(200, {"leader": "ce2a822cea30bfca", "followers": {}})
+        self._mock_api(200, {"leaderInfo":{"leader": "ce2a822cea30bfca", "followers": {}}})
         self.assertEquals(self.client.leader, members["ce2a822cea30bfca"])
 
     def test_set_plain(self):
@@ -397,12 +400,9 @@ class TestClientRequest(TestClientApiInterface):
     def _mock_api(self, status, d, cluster_id=None):
         resp = self._prepare_response(status, d)
         resp.getheader.return_value = cluster_id or "abcdef1234"
-        self.client.http.request_encode_body = mock.create_autospec(
-            self.client.http.request_encode_body, return_value=resp
-        )
-        self.client.http.request = mock.create_autospec(
-            self.client.http.request, return_value=resp
-        )
+        self.client.http.request_encode_body = mock.MagicMock(
+            return_value=resp)
+        self.client.http.request = mock.MagicMock(return_value=resp)
 
     def _mock_error(self, error_code, msg, cause, method='PUT', fields=None,
                     cluster_id=None):
@@ -456,19 +456,31 @@ class TestClientRequest(TestClientApiInterface):
 
     def test_read_cluster_id_changed(self):
         """ Read timeout set to the default """
-        d = {u'action': u'set',
-             u'node': {
+        d = {
+            u'action': u'set',
+            u'node': {
                 u'expiration': u'2013-09-14T00:56:59.316195568+02:00',
                 u'modifiedIndex': 6,
                 u'key': u'/testkey',
                 u'ttl': 19,
-                u'value': u'test'
-                }
-             }
+                u'value': u'test',
+            }
+        }
         self._mock_api(200, d, cluster_id="notabcd1234")
         self.assertRaises(etcd.EtcdClusterIdChanged,
                           self.client.read, '/testkey')
         self.client.read("/testkey")
+
+    def test_read_connection_error(self):
+        self.client.http.request = mock.create_autospec(
+            self.client.http.request,
+            side_effect=socket.error()
+        )
+        self.assertRaises(etcd.EtcdConnectionFailed,
+                          self.client.read, '/something')
+        # Direct GET request
+        self.assertRaises(etcd.EtcdConnectionFailed,
+                          self.client.api_execute, '/a', 'GET')
 
     def test_not_in(self):
         pass
@@ -478,22 +490,23 @@ class TestClientRequest(TestClientApiInterface):
 
     def test_update_fails(self):
         """ Non-atomic updates fail """
-        d = {u'action': u'set',
-             u'node': {
+        d = {
+            u'action': u'set',
+            u'node': {
                 u'expiration': u'2013-09-14T00:56:59.316195568+02:00',
                 u'modifiedIndex': 6,
                 u'key': u'/testkey',
                 u'ttl': 19,
                 u'value': u'test'
-                }
-             }
+            }
+        }
         res = etcd.EtcdResult(**d)
 
         error = {
-            "errorCode":101,
-            "message":"Compare failed",
-            "cause":"[ != bar] [7 != 6]",
-            "index":6}
+            "errorCode": 101,
+            "message": "Compare failed",
+            "cause": "[ != bar] [7 != 6]",
+            "index": 6}
         self._mock_api(412, error)
         res.value = 'bar'
         self.assertRaises(ValueError, self.client.update, res)
